@@ -1,0 +1,93 @@
+Prediction of Correct Moves during Weight Lifting Exercises
+========================================================
+
+Introduction
+-------------------------
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. The goal of this project is to build prediction system using the data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+Data Loading and Preprocessing
+-------------------------
+
+Load required libraries and initial trainig and test data sets
+```{r load_data, cache=TRUE}
+library(caret)
+
+if (!file.exists("pml-training.csv")) {
+  download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", 
+    "pml-training.csv", method = "curl")
+}
+dTrain <- read.csv("pml-training.csv")
+
+if (!file.exists("pml-testing.csv")) {
+  download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", 
+    "pml-testing.csv", method = "curl")
+}
+dTest <- read.csv("pml-testing.csv")
+```
+
+Data set consists of 160 variables: accelerometers data, aggregated data for each experiment, time stamps, etc. For the purpose of this study we need only accelerometers data. Let's drop columns with NAs and empty values and not needed experiment-specific data, which can cause model overfitting.
+```{r data_cleanup, cache=TRUE}
+# remove columns with NAs
+dTrainNoNA <- dTrain[ , colSums(is.na(dTrain)) == 0 & colSums(dTrain == '') == 0]
+# remove experiment specific data
+drop <- c("X", "user_name", "raw_timestamp_part_1",  "raw_timestamp_part_2",  "cvtd_timestamp",  "new_window",	"num_window") 
+dTrainClean <- dTrainNoNA[,!(names(dTrainNoNA) %in% drop)]
+dim(dTrainClean)
+```
+
+There are 52 predictors and one ouput variable "classe". 
+
+Model Training
+-------------------------
+Divide train data into two parts - one for model trainig, another for model validation. Set seed to make analysis reproducible.
+```{r data_divide, cache=TRUE}
+set.seed(5385)
+inSubTrain <- createDataPartition(dTrainClean$classe, p=0.8, list=FALSE)
+dTrainCleanTrain <- dTrainClean[inSubTrain,]
+dTrainCleanTest <- dTrainClean[-inSubTrain,]
+```
+
+Train the Random Forest tree with switched on importance of predictors assessement and cross-validation resampling with 10 folds.
+```{r make_model, cache=TRUE}
+modelFit <- train(classe ~ ., data=dTrainCleanTrain, method='rf', importance=TRUE, trControl = trainControl(method = "cv", number = 10))
+```
+
+Fiinal model confusion matrix looks pretty well.
+```{r model_final, cache=TRUE}
+modelFit$finalModel
+```
+
+Model validation against out-of-sample data
+-------------------------
+Let's validate how well model is working against out-of-sample data. For validation the earlier created 20% training data is used.
+```{r validation, cache=TRUE}
+predictionsTest <- predict(modelFit, newdata = dTrainCleanTest)
+confMatrix <- confusionMatrix(predictionsTest, dTrainCleanTest$classe)
+confMatrix
+```
+
+### Out-of-sample error
+
+The out-of-sample error is determined by validating the model against out-of-sample data:
+```{r sample_error}
+1 - confMatrix$overall["Accuracy"][[1]]
+```
+
+With this out-of-sample error level we can try to predict outcomes for the test data.
+
+Results
+-------------------------
+
+```{r predict_test, cache=TRUE}
+predictions <- predict(modelFit, dTest)
+predictions
+```
+All course-specific tests are passed.
+
+
+
+
+
+
+
